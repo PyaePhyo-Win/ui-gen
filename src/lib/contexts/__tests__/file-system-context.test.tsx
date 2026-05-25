@@ -249,7 +249,6 @@ test("uses provided file system when passed", () => {
 // Tool call tests
 test("handles str_replace_editor create command", () => {
   mockFileSystem.createFileWithParents.mockReturnValue("File created");
-  mockFileSystem.createFile.mockReturnValue({});
 
   const { result } = renderHook(() => useFileSystem(), {
     wrapper: ({ children }) => <FileSystemProvider>{children}</FileSystemProvider>,
@@ -269,10 +268,6 @@ test("handles str_replace_editor create command", () => {
   });
 
   expect(mockFileSystem.createFileWithParents).toHaveBeenCalledWith(
-    "/test.js",
-    "console.log('test');"
-  );
-  expect(mockFileSystem.createFile).toHaveBeenCalledWith(
     "/test.js",
     "console.log('test');"
   );
@@ -304,8 +299,6 @@ test("handles str_replace_editor create command with error", () => {
 
 test("handles str_replace_editor str_replace command", () => {
   mockFileSystem.replaceInFile.mockReturnValue("Replaced successfully");
-  mockFileSystem.readFile.mockReturnValue("new content");
-  mockFileSystem.updateFile.mockReturnValue(true);
 
   const { result } = renderHook(() => useFileSystem(), {
     wrapper: ({ children }) => <FileSystemProvider>{children}</FileSystemProvider>,
@@ -326,8 +319,6 @@ test("handles str_replace_editor str_replace command", () => {
   });
 
   expect(mockFileSystem.replaceInFile).toHaveBeenCalledWith("/test.js", "old", "new");
-  expect(mockFileSystem.readFile).toHaveBeenCalledWith("/test.js");
-  expect(mockFileSystem.updateFile).toHaveBeenCalledWith("/test.js", "new content");
   expect(result.current.refreshTrigger).toBe(initialTrigger + 1);
 });
 
@@ -350,14 +341,11 @@ test("handles str_replace_editor str_replace command with error", () => {
     });
   });
 
-  expect(mockFileSystem.readFile).not.toHaveBeenCalled();
   expect(mockFileSystem.updateFile).not.toHaveBeenCalled();
 });
 
 test("handles str_replace_editor insert command", () => {
   mockFileSystem.insertInFile.mockReturnValue("Inserted successfully");
-  mockFileSystem.readFile.mockReturnValue("updated content");
-  mockFileSystem.updateFile.mockReturnValue(true);
 
   const { result } = renderHook(() => useFileSystem(), {
     wrapper: ({ children }) => <FileSystemProvider>{children}</FileSystemProvider>,
@@ -378,8 +366,6 @@ test("handles str_replace_editor insert command", () => {
   });
 
   expect(mockFileSystem.insertInFile).toHaveBeenCalledWith("/test.js", 5, "new line");
-  expect(mockFileSystem.readFile).toHaveBeenCalledWith("/test.js");
-  expect(mockFileSystem.updateFile).toHaveBeenCalledWith("/test.js", "updated content");
   expect(result.current.refreshTrigger).toBe(initialTrigger + 1);
 });
 
@@ -402,7 +388,6 @@ test("handles str_replace_editor insert command with error", () => {
     });
   });
 
-  expect(mockFileSystem.readFile).not.toHaveBeenCalled();
   expect(mockFileSystem.updateFile).not.toHaveBeenCalled();
 });
 
@@ -486,7 +471,6 @@ test("handles unknown command gracefully", () => {
 
 test("handles null file content when updating file", () => {
   mockFileSystem.replaceInFile.mockReturnValue("Replaced successfully");
-  mockFileSystem.readFile.mockReturnValue(null);
 
   const { result } = renderHook(() => useFileSystem(), {
     wrapper: ({ children }) => <FileSystemProvider>{children}</FileSystemProvider>,
@@ -505,4 +489,63 @@ test("handles null file content when updating file", () => {
   });
 
   expect(mockFileSystem.updateFile).not.toHaveBeenCalled();
+});
+
+test("applyGeneratedFiles creates new files from assistant output", () => {
+  mockFileSystem.readFile.mockReturnValue(null);
+  mockFileSystem.createFileWithParents.mockReturnValue("File created: /App.jsx");
+
+  const { result } = renderHook(() => useFileSystem(), {
+    wrapper: ({ children }) => <FileSystemProvider>{children}</FileSystemProvider>,
+  });
+
+  const initialTrigger = result.current.refreshTrigger;
+
+  act(() => {
+    result.current.applyGeneratedFiles([
+      {
+        path: "/App.jsx",
+        content: "export default function App() { return <div>Hello</div>; }\n",
+      },
+    ]);
+  });
+
+  expect(mockFileSystem.createFileWithParents).toHaveBeenCalledWith(
+    "/App.jsx",
+    "export default function App() { return <div>Hello</div>; }\n"
+  );
+  expect(result.current.refreshTrigger).toBe(initialTrigger + 1);
+});
+
+test("applyGeneratedFiles updates existing files only when content changes", () => {
+  mockFileSystem.readFile
+    .mockReturnValueOnce("old content")
+    .mockReturnValueOnce("same content");
+  mockFileSystem.updateFile.mockReturnValue(true);
+
+  const { result } = renderHook(() => useFileSystem(), {
+    wrapper: ({ children }) => <FileSystemProvider>{children}</FileSystemProvider>,
+  });
+
+  const initialTrigger = result.current.refreshTrigger;
+
+  act(() => {
+    result.current.applyGeneratedFiles([
+      {
+        path: "/App.jsx",
+        content: "new content\n",
+      },
+      {
+        path: "/same.jsx",
+        content: "same content",
+      },
+    ]);
+  });
+
+  expect(mockFileSystem.updateFile).toHaveBeenCalledTimes(1);
+  expect(mockFileSystem.updateFile).toHaveBeenCalledWith(
+    "/App.jsx",
+    "new content\n"
+  );
+  expect(result.current.refreshTrigger).toBe(initialTrigger + 1);
 });

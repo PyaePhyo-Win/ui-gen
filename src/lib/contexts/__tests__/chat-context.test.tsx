@@ -33,6 +33,11 @@ function TestComponent() {
         <button type="submit">Submit</button>
       </form>
       <div data-testid="status">{chat.status}</div>
+      <div data-testid="error">{chat.errorMessage ?? ""}</div>
+      <div data-testid="retryable">{String(chat.canRetryError)}</div>
+      <button data-testid="retry" onClick={() => void chat.retryLastMessage()}>
+        Retry
+      </button>
     </div>
   );
 }
@@ -43,6 +48,7 @@ describe("ChatContext", () => {
   };
 
   const mockHandleToolCall = vi.fn();
+  const mockApplyGeneratedFiles = vi.fn();
 
   const mockUseAIChat = {
     messages: [],
@@ -50,6 +56,8 @@ describe("ChatContext", () => {
     handleInputChange: vi.fn(),
     handleSubmit: vi.fn(),
     status: "idle",
+    error: undefined,
+    reload: vi.fn(),
   };
 
   beforeEach(() => {
@@ -58,6 +66,7 @@ describe("ChatContext", () => {
     (useFileSystem as any).mockReturnValue({
       fileSystem: mockFileSystem,
       handleToolCall: mockHandleToolCall,
+      applyGeneratedFiles: mockApplyGeneratedFiles,
     });
 
     (useAIChat as any).mockReturnValue(mockUseAIChat);
@@ -77,6 +86,8 @@ describe("ChatContext", () => {
     expect(screen.getByTestId("messages").textContent).toBe("0");
     expect(screen.getByTestId("input").getAttribute("value")).toBe(null);
     expect(screen.getByTestId("status").textContent).toBe("idle");
+    expect(screen.getByTestId("error").textContent).toBe("");
+    expect(screen.getByTestId("retryable").textContent).toBe("false");
   });
 
   test("initializes with project ID and messages", () => {
@@ -195,5 +206,82 @@ describe("ChatContext", () => {
     onToolCallHandler({ toolCall });
 
     expect(mockHandleToolCall).toHaveBeenCalledWith(toolCall);
+  });
+
+  test("exposes provider error messages", () => {
+    (useAIChat as any).mockReturnValue({
+      ...mockUseAIChat,
+      status: "error",
+      error: new Error("User location is not supported for the API use."),
+    });
+
+    render(
+      <ChatProvider>
+        <TestComponent />
+      </ChatProvider>
+    );
+
+    expect(screen.getByTestId("status").textContent).toBe("error");
+    expect(screen.getByTestId("error").textContent).toBe(
+      "User location is not supported for the API use."
+    );
+    expect(screen.getByTestId("retryable").textContent).toBe("false");
+  });
+
+  test("only allows retry for 429 quota errors", async () => {
+    const reload = vi.fn().mockResolvedValue(undefined);
+
+    (useAIChat as any).mockReturnValue({
+      ...mockUseAIChat,
+      status: "error",
+      error: new Error("429 Too Many Requests: quota exceeded."),
+      reload,
+    });
+
+    render(
+      <ChatProvider>
+        <TestComponent />
+      </ChatProvider>
+    );
+
+    expect(screen.getByTestId("retryable").textContent).toBe("true");
+
+    act(() => {
+      screen.getByTestId("retry").click();
+    });
+
+    await waitFor(() => {
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test("syncs generated files from assistant code blocks", async () => {
+    (useAIChat as any).mockReturnValue({
+      ...mockUseAIChat,
+      messages: [
+        {
+          id: "assistant-1",
+          role: "assistant",
+          content:
+            "```jsx\n// /App.jsx\nexport default function App() {\n  return <div>Hello</div>;\n}\n```",
+        },
+      ],
+    });
+
+    render(
+      <ChatProvider>
+        <TestComponent />
+      </ChatProvider>
+    );
+
+    await waitFor(() => {
+      expect(mockApplyGeneratedFiles).toHaveBeenCalledWith([
+        {
+          path: "/App.jsx",
+          content:
+            "export default function App() {\n  return <div>Hello</div>;\n}\n",
+        },
+      ]);
+    });
   });
 });

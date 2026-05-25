@@ -5,9 +5,14 @@ import {
   useContext,
   ReactNode,
   useEffect,
+  useRef,
 } from "react";
 import { useChat as useAIChat } from "@ai-sdk/react";
 import { Message } from "ai";
+import {
+  extractGeneratedFilesFromText,
+  getAssistantMessageText,
+} from "@/lib/assistant-response";
 import { useFileSystem } from "./file-system-context";
 import { setHasAnonWork } from "@/lib/anon-work-tracker";
 
@@ -22,16 +27,33 @@ interface ChatContextType {
   handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   status: string;
+  errorMessage: string | null;
+  canRetryError: boolean;
+  retryLastMessage: () => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
+
+function isRetryableQuotaError(message: string): boolean {
+  const normalizedMessage = message.toLowerCase();
+  const has429Signal =
+    normalizedMessage.includes("429") ||
+    normalizedMessage.includes("too many requests");
+  const hasQuotaSignal =
+    normalizedMessage.includes("quota") ||
+    normalizedMessage.includes("rate limit") ||
+    normalizedMessage.includes("resource has been exhausted");
+
+  return has429Signal && hasQuotaSignal;
+}
 
 export function ChatProvider({
   children,
   projectId,
   initialMessages = [],
 }: ChatContextProps & { children: ReactNode }) {
-  const { fileSystem, handleToolCall } = useFileSystem();
+  const { fileSystem, handleToolCall, applyGeneratedFiles } = useFileSystem();
+  const syncedMessageVersionsRef = useRef(new Map<string, string>());
 
   const {
     messages,
@@ -39,6 +61,8 @@ export function ChatProvider({
     handleInputChange,
     handleSubmit,
     status,
+    error,
+    reload,
   } = useAIChat({
     api: "/api/chat",
     initialMessages,
@@ -50,6 +74,51 @@ export function ChatProvider({
       handleToolCall(toolCall);
     },
   });
+
+  const errorMessage =
+    error instanceof Error
+      ? error.message.trim() || "An unknown error occurred."
+      : null;
+  const canRetryError = errorMessage ? isRetryableQuotaError(errorMessage) : false;
+
+  const retryLastMessage = async () => {
+    if (!canRetryError) {
+      return;
+    }
+
+    await reload();
+  };
+
+  useEffect(() => {
+    messages.forEach((message, index) => {
+      if (message.role !== "assistant") {
+        return;
+      }
+
+      const hasToolInvocations =
+        message.parts?.some((part) => part.type === "tool-invocation") ?? false;
+
+      if (hasToolInvocations) {
+        return;
+      }
+
+      const files = extractGeneratedFilesFromText(getAssistantMessageText(message));
+
+      if (files.length === 0) {
+        return;
+      }
+
+      const messageKey = message.id || `assistant-${index}`;
+      const signature = JSON.stringify(files);
+
+      if (syncedMessageVersionsRef.current.get(messageKey) === signature) {
+        return;
+      }
+
+      applyGeneratedFiles(files);
+      syncedMessageVersionsRef.current.set(messageKey, signature);
+    });
+  }, [messages, applyGeneratedFiles]);
 
   // Track anonymous work
   useEffect(() => {
@@ -66,6 +135,9 @@ export function ChatProvider({
         handleInputChange,
         handleSubmit,
         status,
+        errorMessage,
+        canRetryError,
+        retryLastMessage,
       }}
     >
       {children}

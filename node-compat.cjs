@@ -12,4 +12,10 @@
 if (typeof globalThis !== "undefined" && typeof window === "undefined") {
   delete globalThis.localStorage;
   delete globalThis.sessionStorage;
+
+  // Fix Node.js 17+ DNS resolution preferring IPv6 over IPv4
+  const dns = require("dns");
+  if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder("ipv4first");
+  }
 }

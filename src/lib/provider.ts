@@ -1,13 +1,14 @@
 import { google } from "@ai-sdk/google";
 import {
   LanguageModelV1,
+  LanguageModelV1FinishReason,
   LanguageModelV1StreamPart,
   LanguageModelV1Message,
 } from "@ai-sdk/provider";
 
-const MODEL = "gemini-2.0-flash-001";
+const MODEL = "gemini-2.5-flash";
 
-export class MockLanguageModel implements LanguageModelV1 {
+export class MockLanguageModel {
   readonly specificationVersion = "v1" as const;
   readonly provider = "mock";
   readonly modelId: string;
@@ -493,7 +494,323 @@ export default function App() {
   }
 }
 
-export function getLanguageModel() {
+type LanguageModelV1GenerateResult = Awaited<
+  ReturnType<LanguageModelV1["doGenerate"]>
+>;
+
+type LanguageModelV1StreamResult = Awaited<
+  ReturnType<LanguageModelV1["doStream"]>
+>;
+
+function normalizeFinishReason(
+  finishReason: unknown
+): LanguageModelV1FinishReason {
+  if (typeof finishReason === "string") {
+    return finishReason as LanguageModelV1FinishReason;
+  }
+
+  if (
+    finishReason &&
+    typeof finishReason === "object" &&
+    "unified" in finishReason &&
+    typeof finishReason.unified === "string"
+  ) {
+    return finishReason.unified as LanguageModelV1FinishReason;
+  }
+
+  return "unknown";
+}
+
+function normalizeUsage(usage: unknown) {
+  if (!usage || typeof usage !== "object") {
+    return {
+      promptTokens: 0,
+      completionTokens: 0,
+    };
+  }
+
+  const usageRecord = usage as Record<string, unknown>;
+
+  if ("promptTokens" in usageRecord || "completionTokens" in usageRecord) {
+    return {
+      promptTokens:
+        typeof usageRecord.promptTokens === "number"
+          ? usageRecord.promptTokens
+          : 0,
+      completionTokens:
+        typeof usageRecord.completionTokens === "number"
+          ? usageRecord.completionTokens
+          : 0,
+    };
+  }
+
+  const inputTokens =
+    "inputTokens" in usageRecord &&
+    usageRecord.inputTokens &&
+    typeof usageRecord.inputTokens === "object" &&
+    "total" in usageRecord.inputTokens &&
+    typeof usageRecord.inputTokens.total === "number"
+      ? usageRecord.inputTokens.total
+      : 0;
+
+  const outputTokens =
+    "outputTokens" in usageRecord &&
+    usageRecord.outputTokens &&
+    typeof usageRecord.outputTokens === "object" &&
+    "total" in usageRecord.outputTokens &&
+    typeof usageRecord.outputTokens.total === "number"
+      ? usageRecord.outputTokens.total
+      : 0;
+
+  return {
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+  };
+}
+
+function normalizeToolArgs(args: unknown) {
+  if (typeof args === "string") {
+    return args;
+  }
+
+  return JSON.stringify(args ?? {});
+}
+
+function normalizeStreamPart(chunk: any): LanguageModelV1StreamPart | null {
+  switch (chunk?.type) {
+    case "stream-start":
+    case "raw":
+    case "text-start":
+    case "text-end":
+    case "reasoning-start":
+    case "reasoning-end":
+    case "tool-input-start":
+    case "tool-input-delta":
+    case "tool-input-end":
+    case "tool-result":
+      return null;
+
+    case "text-delta":
+      return {
+        type: "text-delta",
+        textDelta:
+          typeof chunk.textDelta === "string"
+            ? chunk.textDelta
+            : typeof chunk.delta === "string"
+            ? chunk.delta
+            : "",
+      };
+
+    case "reasoning":
+      return {
+        type: "reasoning",
+        textDelta: typeof chunk.textDelta === "string" ? chunk.textDelta : "",
+      };
+
+    case "reasoning-delta":
+      return {
+        type: "reasoning",
+        textDelta: typeof chunk.delta === "string" ? chunk.delta : "",
+      };
+
+    case "reasoning-signature":
+      return {
+        type: "reasoning-signature",
+        signature: typeof chunk.signature === "string" ? chunk.signature : "",
+      };
+
+    case "redacted-reasoning":
+      return {
+        type: "redacted-reasoning",
+        data: typeof chunk.data === "string" ? chunk.data : "",
+      };
+
+    case "source":
+      return {
+        type: "source",
+        source: chunk.source,
+      };
+
+    case "file":
+      return {
+        type: "file",
+        mimeType:
+          typeof chunk.mimeType === "string"
+            ? chunk.mimeType
+            : typeof chunk.mediaType === "string"
+            ? chunk.mediaType
+            : "application/octet-stream",
+        data: chunk.data,
+      };
+
+    case "tool-call":
+      return {
+        type: "tool-call",
+        toolCallType: "function",
+        toolCallId:
+          typeof chunk.toolCallId === "string" ? chunk.toolCallId : "",
+        toolName: typeof chunk.toolName === "string" ? chunk.toolName : "",
+        args: normalizeToolArgs(chunk.args ?? chunk.input),
+      };
+
+    case "tool-call-delta":
+      return {
+        type: "tool-call-delta",
+        toolCallType: "function",
+        toolCallId:
+          typeof chunk.toolCallId === "string" ? chunk.toolCallId : "",
+        toolName: typeof chunk.toolName === "string" ? chunk.toolName : "",
+        argsTextDelta:
+          typeof chunk.argsTextDelta === "string"
+            ? chunk.argsTextDelta
+            : typeof chunk.delta === "string"
+            ? chunk.delta
+            : "",
+      };
+
+    case "response-metadata":
+      return {
+        type: "response-metadata",
+        id: typeof chunk.id === "string" ? chunk.id : undefined,
+        timestamp:
+          chunk.timestamp instanceof Date
+            ? chunk.timestamp
+            : typeof chunk.timestamp === "string"
+            ? new Date(chunk.timestamp)
+            : undefined,
+        modelId: typeof chunk.modelId === "string" ? chunk.modelId : undefined,
+      };
+
+    case "finish":
+      return {
+        type: "finish",
+        finishReason: normalizeFinishReason(chunk.finishReason),
+        usage: normalizeUsage(chunk.usage),
+        providerMetadata: chunk.providerMetadata,
+        logprobs: chunk.logprobs,
+      };
+
+    case "error":
+      return {
+        type: "error",
+        error: chunk.error,
+      };
+
+    default:
+      return null;
+  }
+}
+
+function createCompatibleStream(stream: ReadableStream<any>) {
+  return stream.pipeThrough(
+    new TransformStream<any, LanguageModelV1StreamPart>({
+      transform(chunk, controller) {
+        const normalizedChunk = normalizeStreamPart(chunk);
+
+        if (normalizedChunk) {
+          controller.enqueue(normalizedChunk);
+        }
+      },
+    })
+  );
+}
+
+async function readGenerateResultFromStream(
+  streamResult: LanguageModelV1StreamResult
+): Promise<LanguageModelV1GenerateResult> {
+  const reader = streamResult.stream.getReader();
+  let text = "";
+  let reasoning = "";
+  const toolCalls: NonNullable<LanguageModelV1GenerateResult["toolCalls"]> = [];
+  let finishReason: LanguageModelV1FinishReason = "unknown";
+  let usage = {
+    promptTokens: 0,
+    completionTokens: 0,
+  };
+  let providerMetadata: LanguageModelV1GenerateResult["providerMetadata"];
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      switch (value.type) {
+        case "text-delta":
+          text += value.textDelta;
+          break;
+
+        case "reasoning":
+          reasoning += value.textDelta;
+          break;
+
+        case "tool-call":
+          toolCalls.push({
+            toolCallType: value.toolCallType,
+            toolCallId: value.toolCallId,
+            toolName: value.toolName,
+            args: value.args,
+          });
+          break;
+
+        case "finish":
+          finishReason = value.finishReason;
+          usage = value.usage;
+          providerMetadata = value.providerMetadata;
+          break;
+
+        default:
+          break;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return {
+    ...(text ? { text } : {}),
+    ...(reasoning ? { reasoning } : {}),
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    finishReason,
+    usage,
+    rawCall: streamResult.rawCall,
+    ...(streamResult.rawResponse ? { rawResponse: streamResult.rawResponse } : {}),
+    ...(streamResult.request ? { request: streamResult.request } : {}),
+    ...(streamResult.warnings ? { warnings: streamResult.warnings } : {}),
+    ...(providerMetadata ? { providerMetadata } : {}),
+  };
+}
+
+function createCompatibleGeminiModel(model: any): LanguageModelV1 {
+  const doStream: LanguageModelV1["doStream"] = async (options) => {
+    const result = await model.doStream(options);
+
+    return {
+      ...result,
+      stream: createCompatibleStream(result.stream),
+    };
+  };
+
+  return {
+    specificationVersion: "v1",
+    provider: typeof model.provider === "string" ? model.provider : "google",
+    modelId: typeof model.modelId === "string" ? model.modelId : MODEL,
+    defaultObjectGenerationMode:
+      model.defaultObjectGenerationMode ?? "tool",
+    supportsImageUrls: model.supportsImageUrls,
+    supportsStructuredOutputs: model.supportsStructuredOutputs,
+    supportsUrl:
+      typeof model.supportsUrl === "function"
+        ? (url) => model.supportsUrl(url)
+        : undefined,
+    doGenerate: async (options) => readGenerateResultFromStream(await doStream(options)),
+    doStream,
+  };
+}
+
+export function getLanguageModel(): any {
   const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim();
 
   if (!apiKey || apiKey === "your-api-key-here" || apiKey === "") {
@@ -505,5 +822,5 @@ export function getLanguageModel() {
     return new MockLanguageModel("mock-" + MODEL);
   }
 
-  return google(MODEL);
+  return createCompatibleGeminiModel(google(MODEL));
 }

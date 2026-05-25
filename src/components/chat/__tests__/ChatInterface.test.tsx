@@ -20,9 +20,12 @@ vi.mock("@/components/ui/scroll-area", () => ({
 
 // Mock the child components
 vi.mock("../MessageList", () => ({
-  MessageList: ({ messages, isLoading }: any) => (
+  MessageList: ({ messages, isLoading, errorMessage, canRetry, isRetrying }: any) => (
     <div data-testid="message-list">
       {messages.length} messages, loading: {isLoading.toString()}
+      {errorMessage ? `, error: ${errorMessage}` : ""}
+      {canRetry ? `, retry: ${canRetry.toString()}` : ""}
+      {isRetrying ? `, retrying: ${isRetrying.toString()}` : ""}
     </div>
   ),
 }));
@@ -49,6 +52,9 @@ const mockUseChat = {
   handleInputChange: vi.fn(),
   handleSubmit: vi.fn(),
   status: "idle" as const,
+  errorMessage: null,
+  canRetryError: false,
+  retryLastMessage: vi.fn(),
 };
 
 beforeEach(() => {
@@ -84,6 +90,39 @@ test("passes correct props to MessageList", () => {
   const messageList = screen.getByTestId("message-list");
   expect(messageList.textContent).toContain("2 messages");
   expect(messageList.textContent).toContain("loading: true");
+  expect(messageList.textContent).not.toContain("error:");
+});
+
+test("passes chat errors to MessageList", () => {
+  (useChat as any).mockReturnValue({
+    ...mockUseChat,
+    messages: [{ id: "1", role: "user", content: "Hello" }],
+    status: "error",
+    errorMessage: "User location is not supported for the API use.",
+  });
+
+  render(<ChatInterface />);
+
+  const messageList = screen.getByTestId("message-list");
+  expect(messageList.textContent).toContain(
+    "error: User location is not supported for the API use."
+  );
+  expect(messageList.textContent).not.toContain("retry:");
+});
+
+test("passes retry state only for retryable quota errors", () => {
+  (useChat as any).mockReturnValue({
+    ...mockUseChat,
+    messages: [{ id: "1", role: "user", content: "Hello" }],
+    status: "error",
+    errorMessage: "429 Too Many Requests: quota exceeded.",
+    canRetryError: true,
+  });
+
+  render(<ChatInterface />);
+
+  const messageList = screen.getByTestId("message-list");
+  expect(messageList.textContent).toContain("retry: true");
 });
 
 test("passes correct props to MessageInput", () => {

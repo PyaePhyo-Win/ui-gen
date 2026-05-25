@@ -7,6 +7,7 @@ import React, {
   useCallback,
   useEffect,
 } from "react";
+import type { GeneratedFile } from "@/lib/assistant-response";
 import { VirtualFileSystem, FileNode } from "@/lib/file-system";
 
 interface ToolCall {
@@ -26,7 +27,28 @@ interface FileSystemContextType {
   getAllFiles: () => Map<string, string>;
   refreshTrigger: number;
   handleToolCall: (toolCall: ToolCall) => void;
+  applyGeneratedFiles: (files: GeneratedFile[]) => void;
   reset: () => void;
+}
+
+function normalizeToolArgs(args: unknown): Record<string, any> | null {
+  if (!args) {
+    return null;
+  }
+
+  if (typeof args === "string") {
+    try {
+      return JSON.parse(args) as Record<string, any>;
+    } catch {
+      return null;
+    }
+  }
+
+  if (typeof args === "object") {
+    return args as Record<string, any>;
+  }
+
+  return null;
 }
 
 const FileSystemContext = createContext<FileSystemContextType | undefined>(
@@ -136,6 +158,39 @@ export function FileSystemProvider({
     return fileSystem.getAllFiles();
   }, [fileSystem]);
 
+  const applyGeneratedFiles = useCallback(
+    (files: GeneratedFile[]) => {
+      let didChange = false;
+
+      for (const { path, content } of files) {
+        const existingContent = fileSystem.readFile(path);
+
+        if (existingContent === content) {
+          continue;
+        }
+
+        if (existingContent === null) {
+          const result = fileSystem.createFileWithParents(path, content);
+          if (result.startsWith("Error:")) {
+            continue;
+          }
+        } else {
+          const updated = fileSystem.updateFile(path, content);
+          if (!updated) {
+            continue;
+          }
+        }
+
+        didChange = true;
+      }
+
+      if (didChange) {
+        triggerRefresh();
+      }
+    },
+    [fileSystem, triggerRefresh]
+  );
+
   const reset = useCallback(() => {
     fileSystem.reset();
     setSelectedFile(null);
@@ -144,10 +199,15 @@ export function FileSystemProvider({
 
   const handleToolCall = useCallback(
     (toolCall: ToolCall) => {
-      const { toolName, args } = toolCall;
+      const { toolName } = toolCall;
+      const args = normalizeToolArgs(toolCall.args);
+
+      if (!args) {
+        return;
+      }
 
       // Handle str_replace_editor tool
-      if (toolName === "str_replace_editor" && args) {
+      if (toolName === "str_replace_editor") {
         const { command, path, file_text, old_str, new_str, insert_line } = args;
 
         switch (command) {
@@ -155,7 +215,7 @@ export function FileSystemProvider({
             if (path && file_text !== undefined) {
               const result = fileSystem.createFileWithParents(path, file_text);
               if (!result.startsWith("Error:")) {
-                createFile(path, file_text);
+                triggerRefresh();
               }
             }
             break;
@@ -164,10 +224,7 @@ export function FileSystemProvider({
             if (path && old_str !== undefined && new_str !== undefined) {
               const result = fileSystem.replaceInFile(path, old_str, new_str);
               if (!result.startsWith("Error:")) {
-                const content = fileSystem.readFile(path);
-                if (content !== null) {
-                  updateFile(path, content);
-                }
+                triggerRefresh();
               }
             }
             break;
@@ -176,10 +233,7 @@ export function FileSystemProvider({
             if (path && new_str !== undefined && insert_line !== undefined) {
               const result = fileSystem.insertInFile(path, insert_line, new_str);
               if (!result.startsWith("Error:")) {
-                const content = fileSystem.readFile(path);
-                if (content !== null) {
-                  updateFile(path, content);
-                }
+                triggerRefresh();
               }
             }
             break;
@@ -187,7 +241,7 @@ export function FileSystemProvider({
       }
 
       // Handle file_manager tool
-      if (toolName === "file_manager" && args) {
+      if (toolName === "file_manager") {
         const { command, path, new_path } = args;
 
         switch (command) {
@@ -201,14 +255,17 @@ export function FileSystemProvider({
             if (path) {
               const success = fileSystem.deleteFile(path);
               if (success) {
-                deleteFile(path);
+                if (selectedFile === path) {
+                  setSelectedFile(null);
+                }
+                triggerRefresh();
               }
             }
             break;
         }
       }
     },
-    [fileSystem, createFile, updateFile, deleteFile, renameFile]
+    [fileSystem, renameFile, selectedFile, triggerRefresh]
   );
 
   return (
@@ -225,6 +282,7 @@ export function FileSystemProvider({
         getAllFiles,
         refreshTrigger,
         handleToolCall,
+        applyGeneratedFiles,
         reset,
       }}
     >

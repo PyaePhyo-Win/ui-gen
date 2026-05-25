@@ -2,29 +2,45 @@
 
 import { Message } from "ai";
 import { cn } from "@/lib/utils";
-import { User, Bot, Loader2 } from "lucide-react";
+import { User, Bot, Loader2, AlertCircle } from "lucide-react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { Button } from "@/components/ui/button";
 
 interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
+  errorMessage?: string | null;
+  canRetry?: boolean;
+  onRetry?: () => void | Promise<void>;
+  isRetrying?: boolean;
 }
 
-export function MessageList({ messages, isLoading }: MessageListProps) {
-  if (messages.length === 0) {
+export function MessageList({
+  messages,
+  isLoading,
+  errorMessage,
+  canRetry,
+  onRetry,
+  isRetrying,
+}: MessageListProps) {
+  if (messages.length === 0 && !errorMessage) {
     return (
-      <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+      <div className="flex flex-col items-center justify-center h-full w-full px-4 text-center">
         <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-50 mb-4 shadow-sm">
           <Bot className="h-7 w-7 text-blue-600" />
         </div>
-        <p className="text-neutral-900 font-semibold text-lg mb-2">Start a conversation to generate React components</p>
-        <p className="text-neutral-500 text-sm max-w-sm">I can help you create buttons, forms, cards, and more</p>
+        <p className="text-neutral-900 font-semibold text-lg mb-2">
+          Start a conversation to generate React components
+        </p>
+        <p className="text-neutral-500 text-sm max-w-sm">
+          I can help you create buttons, forms, cards, and more
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto px-4 py-6">
+    <div className="flex flex-col pr-4 py-6">
       <div className="space-y-6 max-w-4xl mx-auto w-full">
         {messages.map((message) => (
           <div
@@ -139,6 +155,53 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
             )}
           </div>
         ))}
+
+        {errorMessage && (
+          <div className="flex gap-4 justify-start">
+            <div className="flex-shrink-0">
+              <div className="w-9 h-9 rounded-lg bg-red-50 border border-red-200 shadow-sm flex items-center justify-center">
+                <AlertCircle className="h-4.5 w-4.5 text-red-600" />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 max-w-[85%] items-start">
+              <div className="rounded-xl px-4 py-3 bg-red-50 text-red-950 border border-red-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-2 text-red-700">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-xs font-semibold uppercase tracking-wide">
+                    Error
+                  </span>
+                </div>
+                <div className="text-sm">
+                  <MarkdownRenderer content={errorMessage} className="prose-sm" />
+                </div>
+                {canRetry && onRetry && (
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-red-200 text-red-800 hover:bg-red-100 hover:text-red-900"
+                      onClick={() => {
+                        void onRetry();
+                      }}
+                      disabled={isRetrying}
+                    >
+                      {isRetrying ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Retrying...
+                        </>
+                      ) : (
+                        "Retry"
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

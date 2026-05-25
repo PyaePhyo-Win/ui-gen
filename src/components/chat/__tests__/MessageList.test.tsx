@@ -1,5 +1,6 @@
 import { test, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MessageList } from "../MessageList";
 import type { Message } from "ai";
 
@@ -21,6 +22,76 @@ test("MessageList shows empty state when no messages", () => {
   expect(
     screen.getByText("I can help you create buttons, forms, cards, and more")
   ).toBeDefined();
+});
+
+test("MessageList renders explicit error message", () => {
+  render(
+    <MessageList
+      messages={[
+        {
+          id: "1",
+          role: "user",
+          content: "Create a card",
+        },
+      ]}
+      errorMessage="User location is not supported for the API use."
+    />
+  );
+
+  expect(
+    screen.getByText("User location is not supported for the API use.")
+  ).toBeDefined();
+  expect(screen.getByText("Error")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+});
+
+test("MessageList renders retry button only for 429 quota errors", async () => {
+  const user = userEvent.setup();
+  const onRetry = vi.fn();
+
+  render(
+    <MessageList
+      messages={[]}
+      errorMessage="429 Too Many Requests: quota exceeded for this model."
+      canRetry={true}
+      onRetry={onRetry}
+    />
+  );
+
+  const retryButton = screen.getByRole("button", { name: "Retry" });
+  await user.click(retryButton);
+
+  expect(onRetry).toHaveBeenCalledTimes(1);
+});
+
+test("MessageList shows retrying state when retry is active", () => {
+  render(
+    <MessageList
+      messages={[]}
+      errorMessage="429 Too Many Requests: quota exceeded for this model."
+      canRetry={true}
+      onRetry={vi.fn()}
+      isRetrying={true}
+    />
+  );
+
+  expect(
+    screen.getByRole("button", { name: "Retrying..." }).getAttribute("disabled")
+  ).not.toBeNull();
+});
+
+test("MessageList prefers error over empty state when there are no messages", () => {
+  render(
+    <MessageList
+      messages={[]}
+      errorMessage="The provider rejected the request."
+    />
+  );
+
+  expect(screen.getByText("The provider rejected the request.")).toBeDefined();
+  expect(
+    screen.queryByText("Start a conversation to generate React components")
+  ).toBeNull();
 });
 
 test("MessageList renders user messages", () => {

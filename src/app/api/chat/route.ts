@@ -28,7 +28,8 @@ export async function POST(req: Request) {
   const model = getLanguageModel();
   // Use fewer steps for mock provider to prevent repetition
   const isMockProvider = !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  const result = streamText({
+  
+  const result = await streamText({
     model,
     messages,
     maxTokens: 10_000,
@@ -44,16 +45,10 @@ export async function POST(req: Request) {
       // Save to project if projectId is provided and user is authenticated
       if (projectId) {
         try {
-          // Check if user is authenticated
           const session = await getSession();
-          if (!session) {
-            console.error("User not authenticated, cannot save project");
-            return;
-          }
+          if (!session) return;
 
-          // Get the messages from the response
           const responseMessages = response.messages || [];
-          // Combine original messages with response messages
           const allMessages = appendResponseMessages({
             messages: [...messages.filter((m) => m.role !== "system")],
             responseMessages,
@@ -76,7 +71,11 @@ export async function POST(req: Request) {
     },
   });
 
-  return result.toDataStreamResponse();
+  return result.toDataStreamResponse({
+    getErrorMessage: (error) => {
+      return error instanceof Error ? error.message : String(error);
+    },
+  });
 }
 
 export const maxDuration = 120;
