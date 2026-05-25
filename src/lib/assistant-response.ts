@@ -7,6 +7,7 @@ export interface GeneratedFile {
 
 const CODE_BLOCK_REGEX = /```([^\n`]*)\n([\s\S]*?)```/g;
 const PATH_TOKEN_REGEX = /(\/[-\w./]+\.[A-Za-z0-9]+)/g;
+export const ASSISTANT_FALLBACK_STATUS = "Updated preview from assistant response";
 
 function normalizeVirtualPath(path: string): string | null {
   const normalized = path.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
@@ -78,6 +79,10 @@ function defaultAppPath(info: string, code: string, totalBlocks: number): string
   return null;
 }
 
+function normalizeSummaryText(text: string): string {
+  return text.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function extractGeneratedFilesFromText(text: string): GeneratedFile[] {
   const files = new Map<string, string>();
   const blocks = Array.from(text.matchAll(CODE_BLOCK_REGEX));
@@ -114,6 +119,79 @@ export function extractGeneratedFilesFromText(text: string): GeneratedFile[] {
     path,
     content,
   }));
+}
+
+export function hasAssistantCodeBlocks(text: string): boolean {
+  return CODE_BLOCK_REGEX.test(text);
+}
+
+export function summarizeAssistantResponse(text: string): string {
+  return normalizeSummaryText(text.replace(CODE_BLOCK_REGEX, ""));
+}
+
+function normalizeToolArgs(args: unknown): Record<string, any> | null {
+  if (!args) {
+    return null;
+  }
+
+  if (typeof args === "string") {
+    try {
+      return JSON.parse(args) as Record<string, any>;
+    } catch {
+      return null;
+    }
+  }
+
+  if (typeof args === "object") {
+    return args as Record<string, any>;
+  }
+
+  return null;
+}
+
+export function summarizeToolInvocation(toolInvocation: {
+  toolName: string;
+  args?: unknown;
+}): string {
+  const args = normalizeToolArgs(toolInvocation.args);
+
+  if (!args) {
+    return toolInvocation.toolName;
+  }
+
+  if (toolInvocation.toolName === "str_replace_editor") {
+    const path = typeof args.path === "string" ? args.path : null;
+
+    switch (args.command) {
+      case "create":
+        return path ? `Created ${path}` : "Created file";
+      case "view":
+        return path ? `Viewed ${path}` : "Viewed file";
+      case "str_replace":
+      case "insert":
+        return path ? `Edited ${path}` : "Edited file";
+      default:
+        return toolInvocation.toolName;
+    }
+  }
+
+  if (toolInvocation.toolName === "file_manager") {
+    const path = typeof args.path === "string" ? args.path : null;
+    const nextPath = typeof args.new_path === "string" ? args.new_path : null;
+
+    switch (args.command) {
+      case "rename":
+        return path && nextPath
+          ? `Renamed ${path} to ${nextPath}`
+          : "Renamed file";
+      case "delete":
+        return path ? `Deleted ${path}` : "Deleted file";
+      default:
+        return toolInvocation.toolName;
+    }
+  }
+
+  return toolInvocation.toolName;
 }
 
 export function getAssistantMessageText(

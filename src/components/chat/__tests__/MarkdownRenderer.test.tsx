@@ -53,18 +53,27 @@ test("renders inline code with custom styling", () => {
 
 test("renders code blocks with language class", () => {
   const content = "```javascript\nconst x = 42;\n```";
-  render(<MarkdownRenderer content={content} />);
-  const codeBlock = screen.getByText("const x = 42;");
-  expect(codeBlock.tagName).toBe("CODE");
-  expect(codeBlock.className).toContain("language-javascript");
+  const { container } = render(<MarkdownRenderer content={content} />);
+  const codeBlock = container.querySelector("code.language-javascript");
+  expect(codeBlock).toBeDefined();
+  expect(codeBlock?.textContent).toContain("const x = 42;");
+  expect(codeBlock?.querySelector("span")).toBeDefined();
+  expect(screen.getByText("javascript")).toBeDefined();
+  const pre = container.querySelector("pre");
+  expect(pre).toBeDefined();
+  expect(pre?.className).toContain("overflow-x-auto");
 });
 
 test("renders code blocks without custom inline styling", () => {
   const content = "```python\nprint('Hello')\n```";
-  render(<MarkdownRenderer content={content} />);
-  const codeBlock = screen.getByText("print('Hello')");
-  expect(codeBlock.className).not.toContain("not-prose");
-  expect(codeBlock.className).not.toContain("bg-gray-100");
+  const { container } = render(<MarkdownRenderer content={content} />);
+  const codeBlock = container.querySelector("code.language-python");
+  expect(codeBlock).toBeDefined();
+  expect(codeBlock?.textContent).toContain("print('Hello')");
+  expect(codeBlock?.className).not.toContain("not-prose");
+  expect(codeBlock?.className).not.toContain("bg-neutral-100");
+  const pre = container.querySelector("pre");
+  expect(pre?.className).toContain("overflow-x-auto");
 });
 
 test("applies custom className to wrapper div", () => {
@@ -221,11 +230,15 @@ ${codeContent}
 
 test("handles code blocks without language specification", () => {
   const content = "```\nplain code block\n```";
-  render(<MarkdownRenderer content={content} />);
-  const codeBlock = screen.getByText("plain code block");
-  expect(codeBlock.tagName).toBe("CODE");
-  // Code blocks without language still get custom inline styling in this implementation
-  expect(codeBlock.className).toContain("not-prose");
+  const { container } = render(<MarkdownRenderer content={content} />);
+  const codeBlock = container.querySelector("pre code");
+  expect(codeBlock).toBeDefined();
+  expect(codeBlock?.tagName).toBe("CODE");
+  expect(codeBlock?.textContent).toContain("plain code block");
+  expect(codeBlock?.className).not.toContain("not-prose");
+  const pre = container.querySelector("pre");
+  expect(pre).toBeDefined();
+  expect(pre?.className).toContain("overflow-x-auto");
 });
 
 test("properly escapes HTML in markdown content", () => {

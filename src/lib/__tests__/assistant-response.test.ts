@@ -1,7 +1,10 @@
 import { expect, test } from "vitest";
 import {
+  ASSISTANT_FALLBACK_STATUS,
   extractGeneratedFilesFromText,
+  hasAssistantCodeBlocks,
   getAssistantMessageText,
+  summarizeAssistantResponse,
 } from "../assistant-response";
 
 test("extracts files from fenced code blocks with path comments", () => {
@@ -61,4 +64,23 @@ test("reads assistant text from parts when content is empty", () => {
   } as any);
 
   expect(text).toBe("First part. Second part.");
+});
+
+test("summarizeAssistantResponse strips fenced code without inventing file actions", () => {
+  const summary = summarizeAssistantResponse(
+    "I created the file below.\n\n```jsx\n// /App.jsx\nexport default function App() {\n  return <div>Hello</div>;\n}\n```"
+  );
+
+  expect(summary).toBe("I created the file below.");
+  expect(summary).not.toContain("Created /App.jsx");
+  expect(summary).not.toContain(ASSISTANT_FALLBACK_STATUS);
+});
+
+test("hasAssistantCodeBlocks detects fenced code in assistant responses", () => {
+  expect(
+    hasAssistantCodeBlocks(
+      "```tsx\nexport default function App() {\n  return null;\n}\n```"
+    )
+  ).toBe(true);
+  expect(hasAssistantCodeBlocks("Plain text only.")).toBe(false);
 });

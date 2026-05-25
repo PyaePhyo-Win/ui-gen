@@ -121,3 +121,65 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .chat-markdown {
+    @apply text-[15px] leading-7 text-neutral-800;
+  }
+
+  .chat-markdown > :first-child {
+    margin-top: 0;
+  }
+
+  .chat-markdown > :last-child {
+    margin-bottom: 0;
+  }
+
+  .chat-markdown :where(h1, h2, h3, h4) {
+    @apply mb-2 mt-5 font-semibold tracking-tight text-neutral-900;
+  }
+
+  .chat-markdown :where(h1) {
+    @apply text-lg;
+  }
+
+  .chat-markdown :where(h2) {
+    @apply text-base;
+  }
+
+  .chat-markdown :where(h3, h4) {
+    @apply text-sm;
+  }
+
+  .chat-markdown :where(p, ul, ol, blockquote, hr) {
+    @apply my-2.5;
+  }
+
+  .chat-markdown :where(ul, ol) {
+    @apply pl-4;
+  }
+
+  .chat-markdown :where(li) {
+    @apply my-1;
+  }
+
+  .chat-markdown :where(a) {
+    @apply text-blue-700 underline decoration-blue-200 underline-offset-2 transition-colors;
+  }
+
+  .chat-markdown :where(a:hover) {
+    @apply text-blue-800 decoration-blue-400;
+  }
+
+  .chat-markdown :where(strong) {
+    @apply font-semibold text-neutral-950;
+  }
+
+  .chat-markdown :where(blockquote) {
+    @apply border-l-2 border-neutral-300 pl-4 text-neutral-600;
+  }
+
+  .chat-markdown :where(hr) {
+    @apply border-neutral-200;
+  }
+}

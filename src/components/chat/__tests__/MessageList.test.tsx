@@ -152,6 +152,58 @@ test("MessageList renders messages with parts", () => {
   expect(screen.getByText("str_replace_editor")).toBeDefined();
 });
 
+test("MessageList hides assistant code blocks and shows a neutral fallback status", () => {
+  const messages: Message[] = [
+    {
+      id: "1",
+      role: "assistant",
+      content: "I created the file below.\n\n```jsx\n// /App.jsx\nexport default function App() {\n  return <div>Hello</div>;\n}\n```",
+    },
+  ];
+
+  render(<MessageList messages={messages} />);
+
+  expect(screen.getByText(/I created the file below\./)).toBeDefined();
+  expect(
+    screen.getByText("Updated preview from assistant response")
+  ).toBeDefined();
+  expect(screen.queryByText("export default function App()")).toBeNull();
+  expect(screen.queryByText(/Created \/App\.jsx/)).toBeNull();
+});
+
+test("MessageList shows file activity only for tool invocations", () => {
+  const messages: Message[] = [
+    {
+      id: "1",
+      role: "assistant",
+      content: "",
+      parts: [
+        { type: "text", text: "I updated the app using the editor tool." },
+        {
+          type: "tool-invocation",
+          toolInvocation: {
+            toolCallId: "tool-1",
+            toolName: "str_replace_editor",
+            args: {
+              command: "create",
+              path: "/App.jsx",
+            },
+            state: "result",
+            result: "Success",
+          },
+        },
+      ],
+    },
+  ];
+
+  render(<MessageList messages={messages} />);
+
+  expect(screen.getByText("Created /App.jsx")).toBeDefined();
+  expect(
+    screen.queryByText("Updated preview from assistant response")
+  ).toBeNull();
+});
+
 test("MessageList shows content for assistant message with content", () => {
   const messages: Message[] = [
     {
@@ -254,7 +306,7 @@ test("MessageList renders multiple messages in correct order", () => {
   const { container } = render(<MessageList messages={messages} />);
 
   // Get all message containers in order
-  const messageContainers = container.querySelectorAll(".rounded-xl");
+  const messageContainers = container.querySelectorAll("[data-message-bubble]");
 
   // Verify we have 4 messages
   expect(messageContainers).toHaveLength(4);
@@ -289,7 +341,9 @@ test("MessageList handles step-start parts", () => {
   expect(screen.getByText("Step 1 content")).toBeDefined();
   expect(screen.getByText("Step 2 content")).toBeDefined();
   // Check that a separator exists (hr element)
-  const container = screen.getByText("Step 1 content").closest(".rounded-xl");
+  const container = screen
+    .getByText("Step 1 content")
+    .closest('[data-message-bubble="assistant"]');
   expect(container?.querySelector("hr")).toBeDefined();
 });
 
@@ -309,17 +363,19 @@ test("MessageList applies correct styling for user vs assistant messages", () =>
 
   render(<MessageList messages={messages} />);
 
-  const userMessage = screen.getByText("User message").closest(".rounded-xl");
+  const userMessage = screen
+    .getByText("User message")
+    .closest('[data-message-bubble="user"]');
   const assistantMessage = screen
     .getByText("Assistant message")
-    .closest(".rounded-xl");
+    .closest('[data-message-bubble="assistant"]');
 
   // User messages should have blue background
   expect(userMessage?.className).toContain("bg-blue-600");
   expect(userMessage?.className).toContain("text-white");
 
-  // Assistant messages should have white background
-  expect(assistantMessage?.className).toContain("bg-white");
+  // Assistant messages should have a neutral surface
+  expect(assistantMessage?.className).toContain("bg-neutral-50");
   expect(assistantMessage?.className).toContain("text-neutral-900");
 });
 

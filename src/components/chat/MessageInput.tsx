@@ -27,24 +27,47 @@ export function MessageInput({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="relative p-4 bg-white border-t border-neutral-200/60">
-      <div className="relative max-w-4xl mx-auto">
+    <form
+      onSubmit={handleSubmit}
+      className="relative rounded-2xl border border-neutral-200 bg-white p-3"
+    >
+      <div className="mx-auto max-w-4xl">
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <p className="text-xs text-neutral-500">
+            Press Enter to send. Use Shift+Enter for a new line.
+          </p>
+
+          <p className="hidden text-xs text-neutral-400 sm:block">
+            {isLoading ? "Generating..." : "Ready"}
+          </p>
+        </div>
+
         <textarea
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder="Describe the React component you want to create..."
           disabled={isLoading}
-          className="w-full min-h-[80px] max-h-[200px] pl-4 pr-14 py-3.5 rounded-xl border border-neutral-200 bg-neutral-50/50 text-neutral-900 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500/50 focus:bg-white transition-all placeholder:text-neutral-400 text-[15px] font-normal shadow-sm"
+          className="w-full min-h-[92px] max-h-[220px] resize-none rounded-xl border border-neutral-200 bg-white px-4 py-3 text-[15px] font-normal text-neutral-900 transition-colors placeholder:text-neutral-400 focus:border-blue-500/50 focus:outline-none focus:ring-3 focus:ring-blue-500/10"
           rows={3}
         />
-        <button 
-          type="submit" 
-          disabled={isLoading || !input?.trim()}
-          className="absolute right-3 bottom-3 p-2.5 rounded-lg transition-all hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent group"
-        >
-          <Send className={`h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 ${isLoading || !input?.trim() ? 'text-neutral-300' : 'text-blue-600'}`} />
-        </button>
+
+        <div className="mt-3 flex items-center justify-between gap-3 px-1">
+          <p className="text-xs text-neutral-500">
+            {isLoading
+              ? "The assistant is responding."
+              : "Ask for a component, edit, or bug fix."}
+          </p>
+
+          <button
+            type="submit"
+            disabled={isLoading || !input?.trim()}
+            className="group inline-flex flex-shrink-0 items-center gap-2 rounded-lg bg-neutral-900 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+          >
+            <Send className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            Send
+          </button>
+        </div>
       </div>
     </form>
   );

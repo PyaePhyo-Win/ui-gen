@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -36,14 +37,32 @@ export function MainContent({ user, project }: MainContentProps) {
   return (
     <FileSystemProvider initialData={project?.data}>
       <ChatProvider projectId={project?.id} initialMessages={project?.messages}>
-        <div className="h-screen w-screen overflow-hidden bg-neutral-50">
+        <div className="h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_#fff7ed_0,_transparent_28%),linear-gradient(180deg,_#fafaf9_0%,_#f1f5f9_100%)]">
           <ResizablePanelGroup direction="horizontal" className="h-full">
             {/* Left Panel - Chat */}
             <ResizablePanel defaultSize={35} minSize={25} maxSize={50}>
-              <div className="h-full flex flex-col bg-white">
+              <div className="flex h-full flex-col border-r border-neutral-200/70 bg-[linear-gradient(180deg,_#f8f5ee_0%,_#f4f7fb_100%)]">
                 {/* Chat Header */}
-                <div className="h-14 flex items-center px-6 border-b border-neutral-200/60">
-                  <h1 className="text-lg font-semibold text-neutral-900 tracking-tight">React Component Generator</h1>
+                <div className="border-b border-neutral-200/70 bg-white/70 px-6 py-5 backdrop-blur-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-600">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Chat Studio
+                      </div>
+                      <h1 className="mt-2 text-lg font-semibold tracking-tight text-neutral-950">
+                        React Component Generator
+                      </h1>
+                      <p className="mt-1 max-w-sm text-sm leading-6 text-neutral-600">
+                        Describe UI, refine it in chat, and keep preview plus code synced in the workspace.
+                      </p>
+                    </div>
+
+                    <div className="hidden items-center gap-2 rounded-full border border-neutral-200 bg-white/90 px-3 py-1 text-xs font-medium text-neutral-500 shadow-sm sm:flex">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      Gemini sync
+                    </div>
+                  </div>
                 </div>
 
                 {/* Chat Content */}
@@ -57,9 +76,9 @@ export function MainContent({ user, project }: MainContentProps) {
 
             {/* Right Panel - Preview/Code */}
             <ResizablePanel defaultSize={65}>
-              <div className="h-full flex flex-col bg-white">
+              <div className="flex h-full flex-col bg-white/70 backdrop-blur-sm">
                 {/* Top Bar */}
-                <div className="h-14 border-b border-neutral-200/60 px-6 flex items-center justify-between bg-neutral-50/50">
+                <div className="flex h-14 items-center justify-between border-b border-neutral-200/60 bg-white/80 px-6 backdrop-blur-sm">
                   <Tabs
                     value={activeView}
                     onValueChange={(v) =>
@@ -75,7 +94,7 @@ export function MainContent({ user, project }: MainContentProps) {
                 </div>
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-hidden bg-neutral-50">
+                <div className="flex-1 overflow-hidden bg-[linear-gradient(180deg,_#f8fafc_0%,_#f5f5f4_100%)]">
                   {activeView === "preview" ? (
                     <div className="h-full bg-white">
                       <PreviewFrame />

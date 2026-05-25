@@ -3,6 +3,12 @@
 import { Message } from "ai";
 import { cn } from "@/lib/utils";
 import { User, Bot, Loader2, AlertCircle } from "lucide-react";
+import {
+  ASSISTANT_FALLBACK_STATUS,
+  hasAssistantCodeBlocks,
+  summarizeAssistantResponse,
+  summarizeToolInvocation,
+} from "@/lib/assistant-response";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { Button } from "@/components/ui/button";
 
@@ -25,49 +31,83 @@ export function MessageList({
 }: MessageListProps) {
   if (messages.length === 0 && !errorMessage) {
     return (
-      <div className="flex flex-col items-center justify-center h-full w-full px-4 text-center">
-        <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-50 mb-4 shadow-sm">
+      <div className="flex h-full w-full flex-col items-center justify-center px-4 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50">
           <Bot className="h-7 w-7 text-blue-600" />
         </div>
-        <p className="text-neutral-900 font-semibold text-lg mb-2">
+
+        <p className="mt-5 text-lg font-semibold text-neutral-950">
           Start a conversation to generate React components
         </p>
-        <p className="text-neutral-500 text-sm max-w-sm">
+
+        <p className="mt-2 max-w-sm text-sm leading-6 text-neutral-500">
           I can help you create buttons, forms, cards, and more
+        </p>
+
+        <p className="mt-4 max-w-sm text-xs leading-5 text-neutral-400">
+          Try a component request, a redesign prompt, or a debugging question.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col pr-4 py-6">
-      <div className="space-y-6 max-w-4xl mx-auto w-full">
-        {messages.map((message) => (
+    <div className="flex flex-col px-4 py-5 md:px-5">
+      <div className="mx-auto w-full max-w-4xl space-y-5">
+        {messages.map((message) => {
+          const hasToolInvocations =
+            message.role === "assistant"
+              ? message.parts?.some((part) => part.type === "tool-invocation") ?? false
+              : false;
+          const assistantText =
+            message.role === "assistant"
+              ? typeof message.content === "string" && message.content.length > 0
+                ? message.content
+                : message.parts
+                    ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+                    .join("") ?? ""
+              : "";
+          const showFallbackStatus =
+            message.role === "assistant" &&
+            !hasToolInvocations &&
+            hasAssistantCodeBlocks(assistantText);
+
+          return (
           <div
             key={message.id || message.content}
             className={cn(
-              "flex gap-4",
+              "flex items-start gap-3",
               message.role === "user" ? "justify-end" : "justify-start"
             )}
           >
             {message.role === "assistant" && (
               <div className="flex-shrink-0">
-                <div className="w-9 h-9 rounded-lg bg-white border border-neutral-200 shadow-sm flex items-center justify-center">
-                  <Bot className="h-4.5 w-4.5 text-neutral-700" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100">
+                  <Bot className="h-4 w-4 text-neutral-600" />
                 </div>
               </div>
             )}
             
             <div className={cn(
-              "flex flex-col gap-2 max-w-[85%]",
-              message.role === "user" ? "items-end" : "items-start"
+              "flex min-w-0 flex-col gap-1.5",
+              message.role === "user"
+                ? "w-fit max-w-[42rem] items-end"
+                : "w-full max-w-[42rem] items-start"
             )}>
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-[11px] font-medium text-neutral-500">
+                  {message.role === "user" ? "You" : "Assistant"}
+                </span>
+              </div>
+
               <div className={cn(
-                "rounded-xl px-4 py-3",
-                message.role === "user" 
-                  ? "bg-blue-600 text-white shadow-sm" 
-                  : "bg-white text-neutral-900 border border-neutral-200 shadow-sm"
-              )}>
+                "min-w-0 overflow-hidden rounded-xl rounded-2xl px-4 py-3",
+                message.role === "user"
+                  ? "w-fit max-w-full bg-blue-600 text-white"
+                  : "w-full border border-neutral-200 bg-neutral-50 text-neutral-900"
+              )}
+              data-message-bubble={message.role}
+              >
                 <div className="text-sm">
                   {message.parts ? (
                     <>
@@ -79,42 +119,50 @@ export function MessageList({
                             ) : (
                               <MarkdownRenderer
                                 key={partIndex}
-                                content={part.text}
+                                content={summarizeAssistantResponse(part.text)}
                                 className="prose-sm"
                               />
                             );
                           case "reasoning":
                             return (
-                              <div key={partIndex} className="mt-3 p-3 bg-white/50 rounded-md border border-neutral-200">
-                                <span className="text-xs font-medium text-neutral-600 block mb-1">Reasoning</span>
-                                <span className="text-sm text-neutral-700">{part.reasoning}</span>
+                              <div key={partIndex} className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+                                <span className="mb-1 block text-[11px] font-medium text-amber-700">
+                                  Reasoning
+                                </span>
+                                <span className="text-sm leading-6 text-amber-950">
+                                  {part.reasoning}
+                                </span>
                               </div>
                             );
                           case "tool-invocation":
                             const tool = part.toolInvocation;
                             return (
-                              <div key={partIndex} className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 bg-neutral-50 rounded-lg text-xs font-mono border border-neutral-200">
+                              <div key={partIndex} className="mt-3 inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-mono">
                                 {tool.state === "result" && tool.result ? (
                                   <>
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                    <span className="text-neutral-700">{tool.toolName}</span>
+                                    <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+                                    <span className="text-neutral-700">
+                                      {summarizeToolInvocation(tool)}
+                                    </span>
                                   </>
                                 ) : (
                                   <>
                                     <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
-                                    <span className="text-neutral-700">{tool.toolName}</span>
+                                    <span className="text-neutral-700">
+                                      {summarizeToolInvocation(tool)}
+                                    </span>
                                   </>
                                 )}
                               </div>
                             );
                           case "source":
                             return (
-                              <div key={partIndex} className="mt-2 text-xs text-neutral-500">
+                              <div key={partIndex} className="mt-3 text-xs text-neutral-500">
                                 Source: {JSON.stringify(part.source)}
                               </div>
                             );
                           case "step-start":
-                            return partIndex > 0 ? <hr key={partIndex} className="my-3 border-neutral-200" /> : null;
+                            return partIndex > 0 ? <hr key={partIndex} className="my-4 border-neutral-200" /> : null;
                           default:
                             return null;
                         }
@@ -122,17 +170,32 @@ export function MessageList({
                       {isLoading &&
                         message.role === "assistant" &&
                         messages.indexOf(message) === messages.length - 1 && (
-                          <div className="flex items-center gap-2 mt-3 text-neutral-500">
+                          <div className="mt-4 flex items-center gap-2 text-neutral-500">
                             <Loader2 className="h-3 w-3 animate-spin" />
                             <span className="text-sm">Generating...</span>
                           </div>
                         )}
+                      {showFallbackStatus && (
+                        <div className="mt-3 rounded-lg border border-neutral-200 bg-white/70 px-3 py-2 text-xs text-neutral-500">
+                          {ASSISTANT_FALLBACK_STATUS}
+                        </div>
+                      )}
                     </>
                   ) : message.content ? (
                     message.role === "user" ? (
                       <span className="whitespace-pre-wrap">{message.content}</span>
                     ) : (
-                      <MarkdownRenderer content={message.content} className="prose-sm" />
+                      <>
+                        <MarkdownRenderer
+                          content={summarizeAssistantResponse(message.content)}
+                          className="prose-sm"
+                        />
+                        {showFallbackStatus && (
+                          <div className="mt-3 rounded-lg border border-neutral-200 bg-white/70 px-3 py-2 text-xs text-neutral-500">
+                            {ASSISTANT_FALLBACK_STATUS}
+                          </div>
+                        )}
+                      </>
                     )
                   ) : isLoading &&
                     message.role === "assistant" &&
@@ -148,27 +211,26 @@ export function MessageList({
             
             {message.role === "user" && (
               <div className="flex-shrink-0">
-                <div className="w-9 h-9 rounded-lg bg-blue-600 shadow-sm flex items-center justify-center">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,_#2563eb_0%,_#1d4ed8_100%)] shadow-[0_18px_30px_-24px_rgba(37,99,235,0.75)]">
                   <User className="h-4.5 w-4.5 text-white" />
                 </div>
               </div>
             )}
           </div>
-        ))}
+        )})}
 
         {errorMessage && (
-          <div className="flex gap-4 justify-start">
+          <div className="flex w-full gap-4 justify-start">
             <div className="flex-shrink-0">
-              <div className="w-9 h-9 rounded-lg bg-red-50 border border-red-200 shadow-sm flex items-center justify-center">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-50">
                 <AlertCircle className="h-4.5 w-4.5 text-red-600" />
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 max-w-[85%] items-start">
-              <div className="rounded-xl px-4 py-3 bg-red-50 text-red-950 border border-red-200 shadow-sm">
-                <div className="flex items-center gap-2 mb-2 text-red-700">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="text-xs font-semibold uppercase tracking-wide">
+            <div className="flex w-full max-w-[42rem] flex-col gap-2 items-start">
+              <div className="w-full overflow-hidden rounded-xl rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-950" data-message-bubble="error">
+                <div className="mb-2 flex items-center gap-2 text-red-700">
+                  <span className="text-xs font-medium">
                     Error
                   </span>
                 </div>
