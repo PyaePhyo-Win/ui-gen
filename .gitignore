@@ -36,3 +36,6 @@ yarn-error.log*
 # database
 prisma/dev.db
 prisma/dev.db-journal
+
+# cache
+.playwright-mcp/

@@ -1,0 +1,4 @@
+[[rule]]
+mcpName = "playwright"
+decision = "allow"
+priority = 200
